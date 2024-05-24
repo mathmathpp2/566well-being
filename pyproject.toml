@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "well-being566"
+version = "0.1.0"
+description = ""
+authors = ["566wellbeing group"]
+readme = "README.md"
+
+packages = [
+    { include = "utils" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = "^2.2.2"
+cdt = "^0.6.0"
+torch = "^2.3.0"
+networkx = "^3.3"
+matplotlib = "^3.9.0"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.10.0"
+pandas-stubs = "^2.2.2.240514"
