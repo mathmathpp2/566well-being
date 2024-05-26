@@ -1,0 +1,143 @@
+P1 ⊥ P2
+P1 ⊥ P3
+P1 ⊥ S3 | S1, S2
+P1 ⊥ S6 | S2, S5
+P1 ⊥ Y4 | S2, S4, S6, S7, Z1, Z2
+P1 ⊥ Y4 | P4, S2, S4, S5, S6, S7, Z1
+P1 ⊥ Y4 | P3, P4, S2, S3, S4, S5, S7
+P1 ⊥ Z1 | P3, S2, S3, S5
+P1 ⊥ Z2 | P4, S5, S6, S7, Z1
+P1 ⊥ Z2 | P3, P4, S2, S3, S5, S7
+P1 ⊥ Z3 | P4, S1, S4, S7, Z2
+P1 ⊥ Z3 | P4, S1, S4, S5, S6, S7, Z1
+P1 ⊥ Z3 | P3, P4, S1, S2, S3, S4, S5, S7
+P2 ⊥ P4
+P2 ⊥ S3 | S1, S2
+P2 ⊥ S5 | P1, S3
+P2 ⊥ S5 | P1, S1, S2
+P2 ⊥ S6 | S2, S5
+P2 ⊥ S6 | P1, S2, S3
+P2 ⊥ S6 | P1, S1, S2
+P2 ⊥ S7 | P1, P4, S3, S4
+P2 ⊥ Y4 | S2, S4, S6, S7, Z1, Z2
+P2 ⊥ Y4 | P4, S2, S4, S5, S6, S7, Z1
+P2 ⊥ Y4 | P3, P4, S2, S3, S4, S5, S7
+P2 ⊥ Y4 | P1, P4, S2, S3, S4, S5, S6, Z1
+P2 ⊥ Y4 | P1, P3, P4, S2, S3, S4
+P2 ⊥ Z1 | P3, S2, S3, S5
+P2 ⊥ Z1 | P1, P3, S2, S3
+P2 ⊥ Z1 | P1, P3, S1, S2
+P2 ⊥ Z2 | P4, S5, S6, S7, Z1
+P2 ⊥ Z2 | P1, P4, S3, S4, S5, S6, Z1
+P2 ⊥ Z2 | P3, P4, S2, S3, S5, S7
+P2 ⊥ Z2 | P1, P3, P4, S2, S3, S7
+P2 ⊥ Z2 | P1, P3, P4, S2, S3, S4
+P2 ⊥ Z3 | P4, S1, S4, S7, Z2
+P2 ⊥ Z3 | P4, S1, S4, S5, S6, S7, Z1
+P2 ⊥ Z3 | P1, P4, S1, S3, S4, S5, S6, Z1
+P2 ⊥ Z3 | P3, P4, S1, S2, S3, S4, S5, S7
+P2 ⊥ Z3 | P1, P3, P4, S1, S2, S3, S4
+P3 ⊥ P4
+P3 ⊥ S3 | S1, S2
+P3 ⊥ S5 | P1, S3
+P3 ⊥ S5 | P1, S1, S2
+P3 ⊥ S6 | S2, S5
+P3 ⊥ S6 | P1, S2, S3
+P3 ⊥ S6 | P1, S1, S2
+P3 ⊥ S7 | P1, P4, S3, S4
+P3 ⊥ Y4 | S2, S4, S6, S7, Z1, Z2
+P3 ⊥ Y4 | P4, S2, S4, S5, S6, S7, Z1
+P3 ⊥ Y4 | P1, P4, S2, S3, S4, S5, S6, Z1
+P3 ⊥ Z2 | P4, S5, S6, S7, Z1
+P3 ⊥ Z2 | P1, P4, S3, S4, S5, S6, Z1
+P3 ⊥ Z3 | P4, S1, S4, S7, Z2
+P3 ⊥ Z3 | P4, S1, S4, S5, S6, S7, Z1
+P3 ⊥ Z3 | P1, P4, S1, S3, S4, S5, S6, Z1
+P4 ⊥ S2 | P1, P2, P3, S1
+P4 ⊥ S3 | S1, S2
+P4 ⊥ S3 | P1, P2, P3, S1
+P4 ⊥ S5 | P1, S3
+P4 ⊥ S5 | P1, S1, S2
+P4 ⊥ S5 | P1, P2, P3, S1
+P4 ⊥ S6 | S2, S5
+P4 ⊥ S6 | P1, S2, S3
+P4 ⊥ S6 | P1, S1, S2
+P4 ⊥ S6 | P1, P2, P3, S1
+P4 ⊥ Y4 | S2, S4, S6, S7, Z1, Z2
+P4 ⊥ Y4 | P1, P2, P3, S1, S3, S4, S5, S6, S7, Z1, Z2
+P4 ⊥ Z1 | P3, S2, S3, S5
+P4 ⊥ Z1 | P1, P3, S2, S3
+P4 ⊥ Z1 | P1, P3, S1, S2
+P4 ⊥ Z1 | P1, P2, P3, S1
+S1 ⊥ S5 | P1, S3
+S1 ⊥ S6 | S2, S5
+S1 ⊥ S6 | P1, S2, S3
+S1 ⊥ S7 | P1, P4, S3, S4
+S1 ⊥ Y4 | S2, S4, S6, S7, Z1, Z2
+S1 ⊥ Y4 | P4, S2, S4, S5, S6, S7, Z1
+S1 ⊥ Y4 | P1, P4, S2, S3, S4, S5, S6, Z1
+S1 ⊥ Y4 | P3, P4, S2, S3, S4, S5, S7
+S1 ⊥ Y4 | P1, P3, P4, S2, S3, S4
+S1 ⊥ Z1 | P3, S2, S3, S5
+S1 ⊥ Z1 | P1, P3, S2, S3
+S1 ⊥ Z2 | P4, S5, S6, S7, Z1
+S1 ⊥ Z2 | P1, P4, S3, S4, S5, S6, Z1
+S1 ⊥ Z2 | P3, P4, S2, S3, S5, S7
+S1 ⊥ Z2 | P1, P3, P4, S2, S3, S7
+S1 ⊥ Z2 | P1, P3, P4, S2, S3, S4
+S2 ⊥ S4 | P1, P2, P3, S1, S3
+S2 ⊥ S5 | P1, S3
+S2 ⊥ S7 | P1, P4, S3, S4
+S2 ⊥ S7 | P1, P2, P3, S1, S3
+S2 ⊥ Z2 | P4, S5, S6, S7, Z1
+S2 ⊥ Z2 | P1, P4, S3, S4, S5, S6, Z1
+S2 ⊥ Z2 | P1, P2, P3, S1, S3, S5, S6, Z1
+S2 ⊥ Z3 | P4, S1, S4, S7, Z2
+S2 ⊥ Z3 | P4, S1, S4, S5, S6, S7, Z1
+S2 ⊥ Z3 | P1, P2, P3, P4, S1, S3, S7, Z2
+S2 ⊥ Z3 | P1, P4, S1, S3, S4, S5, S6, Z1
+S2 ⊥ Z3 | P1, P2, P3, S1, S3, S5, S6, Z1
+S3 ⊥ S6 | S2, S5
+S3 ⊥ Y4 | S2, S4, S6, S7, Z1, Z2
+S3 ⊥ Y4 | P4, S2, S4, S5, S6, S7, Z1
+S3 ⊥ Z2 | P4, S5, S6, S7, Z1
+S3 ⊥ Z3 | P4, S1, S4, S7, Z2
+S3 ⊥ Z3 | P4, S1, S4, S5, S6, S7, Z1
+S4 ⊥ S5 | P1, S3
+S4 ⊥ S6 | S2, S5
+S4 ⊥ S6 | P1, S2, S3
+S4 ⊥ S6 | P1, P2, P3, S1, S3
+S4 ⊥ Z1 | P3, S2, S3, S5
+S4 ⊥ Z1 | P1, P3, S2, S3
+S4 ⊥ Z1 | P1, P2, P3, S1, S3
+S4 ⊥ Z2 | P4, S5, S6, S7, Z1
+S4 ⊥ Z2 | P3, P4, S2, S3, S5, S7
+S4 ⊥ Z2 | P1, P3, P4, S2, S3, S7
+S4 ⊥ Z2 | P1, P2, P3, P4, S1, S3, S7
+S5 ⊥ S7 | P1, S3
+S5 ⊥ Y4 | S2, S4, S6, S7, Z1, Z2
+S5 ⊥ Y4 | P1, P3, P4, S2, S3, S6, S7, Z1, Z2
+S5 ⊥ Z3 | P4, S1, S4, S7, Z2
+S5 ⊥ Z3 | P1, P2, P3, P4, S1, S3, S7, Z2
+S5 ⊥ Z3 | P1, P3, P4, S2, S3, S7, Z2
+S6 ⊥ S7 | P1, P4, S3, S4
+S6 ⊥ S7 | P1, P2, P3, S1, S3
+S6 ⊥ S7 | P1, S2, S3
+S6 ⊥ S7 | S2, S5
+S6 ⊥ Z3 | P4, S1, S4, S7, Z2
+S6 ⊥ Z3 | P1, P2, P3, P4, S1, S3, S7, Z2
+S6 ⊥ Z3 | P1, P3, P4, S2, S3, S7, Z2
+S6 ⊥ Z3 | P3, P4, S2, S3, S5, S7, Z2
+S7 ⊥ Z1 | P3, S2, S3, S5
+S7 ⊥ Z1 | P1, P3, S2, S3
+S7 ⊥ Z1 | P1, P2, P3, S1, S3
+S7 ⊥ Z1 | P1, P4, S3, S4
+Y4 ⊥ Z3 | P4, S1, S4, S7, Z2
+Y4 ⊥ Z3 | P1, P2, P3, S1, S3, S4, S5, S6, S7, Z1, Z2
+Y4 ⊥ Z3 | P1, P3, P4, S2, S3, S4, S7, Z2
+Y4 ⊥ Z3 | P3, P4, S2, S3, S4, S5, S7, Z2
+Y4 ⊥ Z3 | S2, S4, S6, S7, Z1, Z2
+Z1 ⊥ Z3 | P4, S1, S4, S7, Z2
+Z1 ⊥ Z3 | P1, P2, P3, P4, S1, S3, S7, Z2
+Z1 ⊥ Z3 | P1, P3, P4, S2, S3, S7, Z2
+Z1 ⊥ Z3 | P3, P4, S2, S3, S5, S7, Z2
