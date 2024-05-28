@@ -1,5 +1,5 @@
 import enum
-from typing import Union, List, Set
+from typing import Union, Set
 from datetime import datetime
 import humanize
 import time
@@ -8,16 +8,15 @@ import logging
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.neural_network import MLPRegressor
-from pathlib import Path
-from sklearn.kernel_ridge import KernelRidge
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score, r2_score, mean_absolute_error
+from sklearn.linear_model import LinearRegression  # type: ignore
+from sklearn.model_selection import train_test_split  # type: ignore
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures  # type: ignore
+from sklearn.ensemble import RandomForestRegressor  # type: ignore
+from sklearn.neural_network import MLPRegressor  # type: ignore
+from pathlib import Path  # type: ignore
+from sklearn.kernel_ridge import KernelRidge  # type: ignore
+from sklearn.pipeline import Pipeline  # type: ignore
+from sklearn.metrics import r2_score, mean_absolute_error
 
 from utils import get_git_root
 from pretty_logger import get_logger
@@ -67,19 +66,19 @@ ema_dictionary = {
 reverse_ema_dictionary = {v: k for k, v in ema_dictionary.items()}
 
 physical_dictionary = {
-    "P1": "excercise",
-    "P2": "studying",
-    "P3": "in house",
-    "P4": "sports",
+    "P1": "excercise (seconds)",
+    "P2": "studying (hours)",
+    "P3": "in house (hours)",
+    "P4": "sports (hours)",
 }
 social_dictionary = {
-    "S1": "traveling",
-    "S2": "distance traveled",
-    "S3": "time in social location",
+    "S1": "traveling (seconds)",
+    "S2": "distance traveled (meters)",
+    "S3": "time in social location (hours)",
     "S4": "visits",
-    "S5": "duration unlocked phone in social locations",
+    "S5": "duration unlocked phone in social locations (minutes)",
     "S6": "frequency of unlocked phone in social locations",
-    "S7": "motion at social locations",
+    "S7": "motion at social locations (minutes)",
 }
 
 sleep_dictionary = {
@@ -162,9 +161,10 @@ class RandomForestModelBuilder:
         y_pred_train = model.predict(X_train)
         y_pred_test = model.predict(X_test)
         r2_train = r2_score(y_train, y_pred_train)
-        mae = mean_absolute_error(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
-
+        mae = mean_absolute_error(y_test, y_pred_test)
+        mae = mean_absolute_error(y_test, y_pred_test)
+        self.model = model
         # Return the fitted model and the R^2 scores
         # for training and testing sets
         return model, (r2_train, r2_test, mae)
@@ -196,9 +196,11 @@ class LinearModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
+        mae = mean_absolute_error(y_test, y_pred_test)
+        self.model = model
         # Return the fitted model and the R^2 scores
         # for training and testing sets
-        return model, (r2_train, r2_test)
+        return model, (r2_train, r2_test, mae)
 
     def fit_polynomial_model(self, degree, test_size=0.2, random_state=None):
         # Extract the X (covariates) and y (outcome) from the data
@@ -224,9 +226,11 @@ class LinearModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
+        mae = mean_absolute_error(y_test, y_pred_test)
+
         # Return the fitted model and the R^2 scores
         # for training and testing sets
-        return model, (r2_train, r2_test)
+        return model, (r2_train, r2_test, mae)
 
 
 class KernelModelBuilder:
@@ -257,9 +261,11 @@ class KernelModelBuilder:
 
         # Return the fitted model and the R^2 scores
         # for training and testing sets
+        mae = mean_absolute_error(y_test, y_pred_test)
         self.model = model
-
-        return model, (r2_train, r2_test)
+        # Return the fitted model and the R^2 scores
+        # for training and testing sets
+        return model, (r2_train, r2_test, mae)
 
     def fit_gaussian_kernel_model(
         self, test_size=0.2, random_state=None, alpha=1.0, gamma=None
@@ -351,8 +357,11 @@ class NeuralNetModelBuilder:
 
         # Return the fitted model and the R^2 scores
         # for training and testing sets
+        mae = mean_absolute_error(y_test, y_pred_test)
         self.model = model
-        return model, (r2_train, r2_test)
+        # Return the fitted model and the R^2 scores
+        # for training and testing sets
+        return model, (r2_train, r2_test, mae)
 
     def predict(self, X_new):
         return self.model.predict(X_new)
@@ -451,8 +460,10 @@ class WBModel:
         results_json = {
             "pre_r_squared train": f"{self.pre_r_squared[0]:.2e}",
             "pre_r_squared test": f"{self.pre_r_squared[1]:.2e}",
+            "pre_mae test": f"{self.pre_r_squared[2]:.2e}",
             "post_r_squared train": f"{self.post_r_squared[0]:.2e}",
             "post_r_squared test": f"{self.post_r_squared[1]:.2e}",
+            "post_mae test": f"{self.post_r_squared[2]:.2e}",
             "time": humanize.precisedelta(self.fit_time),
             "path": str(self.folder_path),
             "name": self.name,
@@ -710,3 +721,77 @@ def aggregate_results_from_subfolders(base_folder):
     )
     df.sort_values(by="pre_r_squared test", ascending=False, inplace=True)
     return df
+
+
+class CovariateSet:
+    @staticmethod
+    def model_row_series_valid(
+        row: pd.Series,
+        data: pd.DataFrame,
+    ):
+        adjustment_set = row["sets"].tolist()
+        outcome = row["outcome"]
+        treatment = row["treatment"]
+
+        if treatment not in data.columns or outcome not in data.columns:
+            return logger.debug(
+                f"treatment or outcome not in columns: "
+                f"{treatment} or {outcome} (columns:{data.columns})"
+            )
+        else:
+            return set(data.columns).intersection(set(adjustment_set))
+
+    @staticmethod
+    def row_string(outcome, treatment, adjustment_set):
+        return (
+            f"treatment: {treatment}:{full_dictionary[treatment]}, "
+            f"outcome: {outcome}:{full_dictionary[outcome]}, "
+            f"adjustment set={adjustment_set}"
+        )
+
+    def __init__(
+        self,
+        row: pd.Series,
+        data: pd.DataFrame,
+        treatments_to_skip=set([]),
+        outcomes_to_skip=set([]),
+    ) -> None:
+        # passed adjustment set
+        self.outcomes_to_skip = outcomes_to_skip
+        self.treatments_to_skip = treatments_to_skip
+        self.original_adjustment_set = row["sets"].tolist()
+        # adjustment set restricted to valid data (columns in the dataframe)
+        self.restricted_adjustment_set = CovariateSet.model_row_series_valid(
+            row=row, data=data
+        )
+        self.treatment = row["treatment"]
+        self.outcome = row["outcome"]
+
+    @property
+    def set_to_fit(self) -> Union[tuple, None]:
+        if self.valid_set:
+            return (
+                self.outcome,
+                set([self.treatment] + list(self.restricted_adjustment_set)),
+            )
+        else:
+            return None
+
+    @property
+    def valid_set(self):
+        return (
+            (self.restricted_adjustment_set is not None)
+            and (len(self.restricted_adjustment_set) != 0)
+            # exclude demographics
+            and (not self.treatment.startswith("D"))
+            and (self.outcome not in self.outcomes_to_skip)
+            and (self.treatment not in self.treatments_to_skip)
+        )
+
+    def __repr__(self):
+        return CovariateSet.row_string(
+            self.outcome, self.treatment, self.restricted_adjustment_set
+        )
+
+    def __str__(self):
+        return f"{self.set_to_fit}"
