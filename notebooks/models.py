@@ -38,14 +38,6 @@ date_covid = datetime(2020, 3, 1)
 date_vaccine = datetime(2021, 4, 1)
 
 
-class WBModelType(enum.Enum):
-    LINEAR = 1
-
-
-class SplitMethod(enum.Enum):
-    MEDIAN = 1
-
-
 class COVIDStatus(enum.Enum):
     PRE_COVID = 0
     POST_COVID = 1
@@ -456,14 +448,22 @@ class WBModel:
 
         # Calculate the time taken to fit the model
         self.fit_time = end_time - self.start_time
+        postcovid_ace = self.postcovid_ace()
+        precovid_ace = self.precovid_ace()
+        difference_of_ace = postcovid_ace - precovid_ace
+        relative_difference_of_ace = 100*difference_of_ace / precovid_ace
 
         results_json = {
-            "pre_r_squared train": f"{self.pre_r_squared[0]:.2e}",
             "pre_r_squared test": f"{self.pre_r_squared[1]:.2e}",
-            "pre_mae test": f"{self.pre_r_squared[2]:.2e}",
-            "post_r_squared train": f"{self.post_r_squared[0]:.2e}",
+            "pre_r_squared train": f"{self.pre_r_squared[0]:.2e}",
             "post_r_squared test": f"{self.post_r_squared[1]:.2e}",
+            "post_r_squared train": f"{self.post_r_squared[0]:.2e}",
+            "pre_mae test": f"{self.pre_r_squared[2]:.2e}",
             "post_mae test": f"{self.post_r_squared[2]:.2e}",
+            "postcovid ACE": f"{precovid_ace:.2e}",
+            "precovid ACE": f"{postcovid_ace:.2e}",
+            "difference of ACE": f"{difference_of_ace:.2e}",
+            "Relative difference of ACE": f"{relative_difference_of_ace:.2e}",
             "time": humanize.precisedelta(self.fit_time),
             "path": str(self.folder_path),
             "name": self.name,
@@ -503,7 +503,7 @@ class WBModel:
 
         data = pd.concat([data_actual, data_counterfactual])
 
-        X_counterfactual = data[self.covariates]
+        X_counterfactual = data[list(self.covariates)]
         if covid_stage == COVIDStatus.PRE_COVID:
             return self.pre_model.predict(X_counterfactual)
 
@@ -511,6 +511,7 @@ class WBModel:
             return self.post_model.predict(X_counterfactual)
 
     def precovid_ace(self):
+        # difference of Y(1) and Y(0) in the precovid world
         Y_of_1 = np.mean(
             self.predict_counterfactural_mean(
                 COVIDStatus.PRE_COVID, counter_factual_treatment=True
@@ -524,6 +525,7 @@ class WBModel:
         return Y_of_1 - Y_of_0
 
     def postcovid_ace(self):
+        # difference of Y(1) and Y(0) in the postcovid world
         Y_of_1 = np.mean(
             self.predict_counterfactural_mean(
                 COVIDStatus.POST_COVID, counter_factual_treatment=True
@@ -535,14 +537,6 @@ class WBModel:
             )
         )
         return Y_of_1 - Y_of_0
-        # @property
-
-    # def post_ace(self):
-    #     return self.post_coefficients[self.treatment]
-
-    # @property
-    # def pre_ace(self):
-    #     return self.pre_coefficients[self.treatment]
 
     @property
     def summary(self):
@@ -550,8 +544,6 @@ class WBModel:
             f"pre-covid ACE: {self.pre_ace}, post_covid:{self.post_ace}"
             f"pre_r_squared: {self.pre_r_squared}, "
             f"post_r_squared: {self.post_r_squared}"
-            # f"pre_coefficients: {self.pre_coefficients}"
-            # f"post_coefficients:{self.post_coefficients}")
         )
 
 
@@ -580,7 +572,7 @@ class WBNeuralNetModel(WBModel):
         )
 
         self.model_type_specific = {
-            "model": "NN",
+            "type": "NN",
             "alpha": self.alpha,
             "max_iter": self.max_iter,
             "activation": self.activation,
