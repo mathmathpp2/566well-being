@@ -57,7 +57,7 @@ def get_logger(
     file_handler.setFormatter(colored_formatter)
 
     if add_console_hander:
-        console_handler = logger.handlers[0]
+        console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
         console_handler.setFormatter(colored_formatter)
         logger.addHandler(console_handler)

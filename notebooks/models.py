@@ -1,9 +1,10 @@
 import enum
-from typing import Union, List
+from typing import Union, List, Set
 from datetime import datetime
 import humanize
 import time
 import json
+import logging
 
 import numpy as np
 import pandas as pd
@@ -15,11 +16,20 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.neural_network import MLPRegressor
 from pathlib import Path
 from sklearn.kernel_ridge import KernelRidge
-from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, r2_score, mean_absolute_error
 
-import matplotlib.pyplot as plt
+from utils import get_git_root
+from pretty_logger import get_logger
+
+project_root = get_git_root()
+
+logger = get_logger(
+    name="modelslog",
+    full_path=Path(project_root, "log/models.log"),
+    add_console_hander=True,
+    level=logging.INFO,
+)
 
 NJOBS = 8
 
@@ -28,11 +38,14 @@ date_covid = datetime(2020, 3, 1)
 # rough date
 date_vaccine = datetime(2021, 4, 1)
 
+
 class WBModelType(enum.Enum):
     LINEAR = 1
 
+
 class SplitMethod(enum.Enum):
     MEDIAN = 1
+
 
 class COVIDStatus(enum.Enum):
     PRE_COVID = 0
@@ -41,10 +54,11 @@ class COVIDStatus(enum.Enum):
     def __str__(self):
         return f"{self.name}"
 
+
 ema_dictionary = {
     "Y1": "pam",
-    "Y2": "phq2_score",
-    "Y3": "phq4_score",
+    "Y2": "phq4_score",
+    "Y3": "phq2_score",
     "Y4": "gad2_score",
     "Y5": "social_level",
     "Y6": "sse_score",
@@ -80,24 +94,28 @@ demographic_dictionary = {
     "D2": "race",
     "D3": "os",
     "D4": "cohort year",
-
 }
 
 
 full_dictionary = (
-    physical_dictionary | social_dictionary | sleep_dictionary | ema_dictionary | {'C': COVIDStatus} | demographic_dictionary
+    physical_dictionary
+    | social_dictionary
+    | sleep_dictionary
+    | ema_dictionary
+    | {"C": COVIDStatus}
+    | demographic_dictionary
 )
 
 ema = [f"Y{i}" for i in range(1, 8, 1)]
 physical = [f"P{i}" for i in range(1, 5, 1)]
 social = [f"S{i}" for i in range(1, 8, 1)]
 sleep = [f"Z{i}" for i in range(1, 4, 1)]
+demographic = [f"D{i}" for i in range(1, 5, 1)]
 
 datafile = "../data/features_v3.csv"
 # _longest is actually shorter and only has the Y-s ?
 sets_file = "../2.causal discovery/pc_ici_longest.parquet"
-#sets_file = "../2.causal discovery/pc_ici.parquet"
-
+# sets_file = "../2.causal discovery/pc_ici.parquet"
 
 
 class RandomForestModelBuilder:
@@ -106,29 +124,51 @@ class RandomForestModelBuilder:
         self.outcome = outcome
         self.covariates = covariates
 
-    def fit_random_forest(self, test_size=0.2, random_state=None, n_estimators=100, max_depth=None, ccp_alpha=0):
+    def fit_random_forest(
+        self,
+        test_size=0.2,
+        random_state=None,
+        n_estimators=100,
+        max_depth=None,
+        ccp_alpha=0,
+    ):
         # Extract the X (covariates) and y (outcome) from the data
-        X = self.data[self.covariates]
+        X = self.data[list(self.covariates)]
         y = self.data[self.outcome]
 
         # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
 
-        model = Pipeline([
-            ('scaler', StandardScaler()),
-            ('regressor', RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, random_state=random_state, n_jobs=NJOBS, ccp_alpha=1e-4))
-        ])
+        model = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "regressor",
+                    RandomForestRegressor(
+                        n_estimators=n_estimators,
+                        max_depth=max_depth,
+                        random_state=random_state,
+                        n_jobs=NJOBS,
+                        ccp_alpha=1e-4,
+                    ),
+                ),
+            ]
+        )
         model.fit(X_train, y_train)
 
         # Predict the outcome on the training and testing data
         y_pred_train = model.predict(X_train)
         y_pred_test = model.predict(X_test)
         r2_train = r2_score(y_train, y_pred_train)
-        mean_absolute_error(y_train, y_pred_train)
+        mae = mean_absolute_error(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
-        # Return the fitted model and the R^2 scores for training and testing sets
-        return model, (r2_train, r2_test)
+        # Return the fitted model and the R^2 scores
+        # for training and testing sets
+        return model, (r2_train, r2_test, mae)
+
 
 class LinearModelBuilder:
     def __init__(self, data, outcome, covariates):
@@ -142,7 +182,9 @@ class LinearModelBuilder:
         y = self.data[self.outcome]
 
         # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
 
         # Create and fit the linear regression model
         model = LinearRegression()
@@ -154,7 +196,8 @@ class LinearModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
-        # Return the fitted model and the R^2 scores for training and testing sets
+        # Return the fitted model and the R^2 scores
+        # for training and testing sets
         return model, (r2_train, r2_test)
 
     def fit_polynomial_model(self, degree, test_size=0.2, random_state=None):
@@ -167,7 +210,9 @@ class LinearModelBuilder:
         X_poly = poly.fit_transform(X)
 
         # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X_poly, y, test_size=test_size, random_state=random_state)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_poly, y, test_size=test_size, random_state=random_state
+        )
 
         # Create and fit the linear regression model with polynomial features
         model = LinearRegression()
@@ -179,9 +224,9 @@ class LinearModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
-        # Return the fitted model and the R^2 scores for training and testing sets
+        # Return the fitted model and the R^2 scores
+        # for training and testing sets
         return model, (r2_train, r2_test)
-
 
 
 class KernelModelBuilder:
@@ -196,10 +241,12 @@ class KernelModelBuilder:
         y = self.data[self.outcome]
 
         # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
 
         # Create and fit the linear regression model
-        model = KernelRidge(kernel='linear', alpha=alpha)
+        model = KernelRidge(kernel="linear", alpha=alpha)
         model.fit(X_train, y_train)
 
         # Predict the outcome on the training and testing data
@@ -208,22 +255,32 @@ class KernelModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
-        # Return the fitted model and the R^2 scores for training and testing sets
+        # Return the fitted model and the R^2 scores
+        # for training and testing sets
         self.model = model
 
         return model, (r2_train, r2_test)
 
-    def fit_gaussian_kernel_model(self, test_size=0.2, random_state=None, alpha=1.0, gamma=None):
+    def fit_gaussian_kernel_model(
+        self, test_size=0.2, random_state=None, alpha=1.0, gamma=None
+    ):
         # Extract the X (covariates) and y (outcome) from the data
         X = self.data[self.covariates]
         y = self.data[self.outcome]
 
         # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
-        model = Pipeline([
-            ('scaler', StandardScaler()),
-            ('regressor', KernelRidge(kernel='rbf', alpha=alpha, gamma=gamma))
-        ])
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
+        model = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "regressor",
+                    KernelRidge(kernel="rbf", alpha=alpha, gamma=gamma),
+                ),
+            ]
+        )
         model.fit(X_train, y_train)
         # Create and fit the Gaussian kernel regression model
         model.fit(X_train, y_train)
@@ -234,13 +291,13 @@ class KernelModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
-        # Return the fitted model and the R^2 scores for training and testing sets
+        # Return the fitted model and the R^2 scores
+        # for training and testing sets
         self.model = model
         return model, (r2_train, r2_test)
 
     def predict(self, X_new):
         return self.model.predict(X_new)
-
 
 
 class NeuralNetModelBuilder:
@@ -249,20 +306,42 @@ class NeuralNetModelBuilder:
         self.outcome = outcome
         self.covariates = covariates
 
-    def fit_neural_net(self, hidden_layer_sizes=(100, ), activation='relu', solver='adam', test_size=0.2, random_state=None, max_iter=500, alpha=1e-4):
+    def fit_neural_net(
+        self,
+        hidden_layer_sizes=(100,),
+        activation="relu",
+        solver="adam",
+        test_size=0.2,
+        random_state=None,
+        max_iter=500,
+        alpha=1e-4,
+    ):
         # Extract the X (covariates) and y (outcome) from the data
         X = self.data[self.covariates]
         y = self.data[self.outcome]
 
         # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
 
-        model = Pipeline([
-            ('scaler', StandardScaler()),
-            ('regressor', MLPRegressor(hidden_layer_sizes=hidden_layer_sizes, activation=activation, solver=solver, max_iter=max_iter, random_state=random_state, alpha=alpha))
-        ])
+        model = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "regressor",
+                    MLPRegressor(
+                        hidden_layer_sizes=hidden_layer_sizes,
+                        activation=activation,
+                        solver=solver,
+                        max_iter=max_iter,
+                        random_state=random_state,
+                        alpha=alpha,
+                    ),
+                ),
+            ]
+        )
         model.fit(X_train, y_train)
-
 
         # Predict the outcome on the training and testing data
         y_pred_train = model.predict(X_train)
@@ -270,7 +349,8 @@ class NeuralNetModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
-        # Return the fitted model and the R^2 scores for training and testing sets
+        # Return the fitted model and the R^2 scores
+        # for training and testing sets
         self.model = model
         return model, (r2_train, r2_test)
 
@@ -279,15 +359,17 @@ class NeuralNetModelBuilder:
 
 
 class WBModel:
-    """ if binarization_threshold is None, leave the treatment column as is
-    """
-    def __init__(self,
-                 data: pd.DataFrame,
-                 treatment: str,
-                 outcome: str,
-                 separating_set: List[str],
-                 binarization_threshold: Union[float, None]=None,
-                 name: str=""):
+    """if binarization_threshold is None, leave the treatment column as is"""
+
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        treatment: str,
+        outcome: str,
+        separating_set: Set[str],
+        binarization_threshold: Union[float, None] = None,
+        name: str = "",
+    ):
         self.start_time = time.time()
         self.name = name
         self.data = data.copy()
@@ -296,16 +378,20 @@ class WBModel:
         else:
             raise ValueError(
                 "treatment not in data or treatment not a string "
-                "(with the column name of the treatment)")
+                "(with the column name of the treatment)"
+            )
         if isinstance(outcome, str) and outcome in self.data.columns:
             self.outcome = outcome
         else:
-            raise ValueError("outcome not in data or outcome not a string"
-                             "(with the column name of the outcome)")
+            raise ValueError(
+                "outcome not in data or outcome not a string"
+                "(with the column name of the outcome)"
+            )
 
         # check that all covariates are in data
-        if not all(covariate in self.data.columns
-                   for covariate in separating_set):
+        if not all(
+            covariate in self.data.columns for covariate in separating_set
+        ):
             raise ValueError("some covariate not in data")
         else:
             self.separating_set = separating_set
@@ -314,25 +400,31 @@ class WBModel:
 
         if self.binarization_threshold is not None:
             self.data[self.treatment] = (
-                self.data[treatment] > binarization_threshold)
+                self.data[treatment] > binarization_threshold
+            )
         else:
-            if set(self.data[self.treatment].unique()) != {0,1}:
-                print(
+            if set(self.data[self.treatment].unique()) != {0, 1}:
+                logger.debug(
                     "Binarizing using median value "
                     f"({full_dictionary[self.treatment]} "
-                    f"median={self.data[self.treatment].median():.2e})")
+                    f"median={self.data[self.treatment].median():.2e})"
+                )
                 self.data[self.treatment] = (
-                    self.data[self.treatment] > self.data[self.treatment].median())
+                    self.data[self.treatment]
+                    > self.data[self.treatment].median()
+                )
 
         self.covariates_dictionary = {
-            key: value for key,value in full_dictionary.items()
-            if key in self.data.columns}
-
-        self.model_covariates=[self.treatment] + self.separating_set
+            key: value
+            for key, value in full_dictionary.items()
+            if key in self.data.columns
+        }
+        # set([self.treatment]), set(self.treatment) will split the string
+        self.covariates = set([self.treatment]) | self.separating_set
 
         now = datetime.now()
-        timestamp = now.strftime('%Y%m%d_%H%M%S') + f'_{now.microsecond:06d}'
-        #timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = now.strftime("%Y%m%d_%H%M%S") + f"_{now.microsecond:06d}"
+        # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         # Step 2: Create a Path object with the folder name
         self.folder_path = Path(timestamp)
@@ -340,54 +432,21 @@ class WBModel:
         # Step 3: Check if the folder exists, if not, create it
         if not self.folder_path.exists():
             self.folder_path.mkdir()
-            print(f"Directory {self.folder_path} created.")
+            logger.debug(f"Directory {self.folder_path} created.")
         else:
-            print(f"Directory {self.folder_path} already exists.")
+            logger.debug(f"Directory {self.folder_path} already exists.")
 
-        self.X = self.data[self.model_covariates]
+        self.X = self.data[list(self.covariates)]
         self.y = self.data[self.outcome]
 
-    def plot_data_and_fit(self, X, y_actual, y_pred, title="Model Fit", xlabel="X", ylabel="Y"):
-        """
-        Plots the actual data points and the model fit.
-
-        Parameters:
-        - X: array-like, shape (n_samples,)
-            The input data.
-        - y_actual: array-like, shape (n_samples,)
-            The actual target values.
-        - y_pred: array-like, shape (n_samples,)
-            The predicted target values from the model.
-        - title: str, default="Model Fit"
-            The title of the plot.
-        - xlabel: str, default="X"
-            The label for the x-axis.
-        - ylabel: str, default="Y"
-            The label for the y-axis.
-        """
-
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        y_pred = self.model.predict(self.X)
-
-        ax.scatter(self.X, y_actual, color='blue', label='Actual Data')
-        ax.plot(self.X, y_pred, color='red', label='Model Fit', linewidth=2)
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.legend()
-        ax.grid(True)
-        fig.savefig(Path(self.folder_path, f"{title}.png"), dpi=400)
-        fig.savefig(Path(self.folder_path, f"{title}.svg"))
-        plt.show()
-
+        self.pre_model = None
+        self.post_model = None
 
     def document(self):
         end_time = time.time()
 
         # Calculate the time taken to fit the model
         self.fit_time = end_time - self.start_time
-
 
         results_json = {
             "pre_r_squared train": f"{self.pre_r_squared[0]:.2e}",
@@ -399,17 +458,74 @@ class WBModel:
             "name": self.name,
             "outcome": self.outcome,
             "treatment": self.treatment,
-            "covariates": f"{self.model_covariates}",
+            "covariates": f"{self.covariates}",
             "description": (
                 "Modeling treatment:"
                 f"{full_dictionary[self.treatment]} "
-                f"on outcome:{full_dictionary[self.outcome]}")
+                f"on outcome:{full_dictionary[self.outcome]}"
+            ),
         }
-        with open(Path(self.folder_path, "results.json"), 'w') as f:
+        with open(Path(self.folder_path, "results.json"), "w") as f:
             json.dump(results_json | self.model_type_specific, f, indent=4)
 
+    def predict_counterfactural_mean(
+        self, covid_stage: COVIDStatus, counter_factual_treatment: bool
+    ):
+        """_summary_
+        wvb.predict_counterfactural_mean(COVIDStatus.PRECOVID, True)
+        is the counterfactual
+        :param counter_factual_treatment: _description_
+        :type counter_factual_treatment: bool
+        :param covid_stage: _description_
+        :type covid_stage: COVIDStatus
+        :return: _description_
+        :rtype: _type_
+        """
+        # slide 16 lecture 3
+        data_actual = self.data[
+            self.data[self.treatment] == counter_factual_treatment
+        ].copy()
+        data_counterfactual = self.data[
+            self.data[self.treatment] != counter_factual_treatment
+        ].copy()
+        data_counterfactual[self.treatment] = counter_factual_treatment
 
-    # @property
+        data = pd.concat([data_actual, data_counterfactual])
+
+        X_counterfactual = data[self.covariates]
+        if covid_stage == COVIDStatus.PRE_COVID:
+            return self.pre_model.predict(X_counterfactual)
+
+        elif covid_stage == COVIDStatus.POST_COVID:
+            return self.post_model.predict(X_counterfactual)
+
+    def precovid_ace(self):
+        Y_of_1 = np.mean(
+            self.predict_counterfactural_mean(
+                COVIDStatus.PRE_COVID, counter_factual_treatment=True
+            )
+        )
+        Y_of_0 = np.mean(
+            self.predict_counterfactural_mean(
+                COVIDStatus.PRE_COVID, counter_factual_treatment=False
+            )
+        )
+        return Y_of_1 - Y_of_0
+
+    def postcovid_ace(self):
+        Y_of_1 = np.mean(
+            self.predict_counterfactural_mean(
+                COVIDStatus.POST_COVID, counter_factual_treatment=True
+            )
+        )
+        Y_of_0 = np.mean(
+            self.predict_counterfactural_mean(
+                COVIDStatus.POST_COVID, counter_factual_treatment=False
+            )
+        )
+        return Y_of_1 - Y_of_0
+        # @property
+
     # def post_ace(self):
     #     return self.post_coefficients[self.treatment]
 
@@ -419,120 +535,148 @@ class WBModel:
 
     @property
     def summary(self):
-        print(f"pre-covid ACE: {self.pre_ace}, post_covid:{self.post_ace}"
-              f"pre_r_squared: {self.pre_r_squared}, post_r_squared: {self.post_r_squared}"
-              #f"pre_coefficients: {self.pre_coefficients}"
-              #f"post_coefficients:{self.post_coefficients}")
-
+        print(
+            f"pre-covid ACE: {self.pre_ace}, post_covid:{self.post_ace}"
+            f"pre_r_squared: {self.pre_r_squared}, "
+            f"post_r_squared: {self.post_r_squared}"
+            # f"pre_coefficients: {self.pre_coefficients}"
+            # f"post_coefficients:{self.post_coefficients}")
         )
+
 
 class WBNeuralNetModel(WBModel):
     def __init__(self, **kwargs):
-        self.alpha = kwargs.pop('alpha', 1e-4)
-        self.hidden_layer_sizes = kwargs.pop('hidden_layer_sizes', (32,))
-        self.max_iter = kwargs.pop('max_iter', 400)
-        self.activation = kwargs.pop('activation', 'relu')
+        self.alpha = kwargs.pop("alpha", 1e-4)
+        self.hidden_layer_sizes = kwargs.pop("hidden_layer_sizes", (32,))
+        self.max_iter = kwargs.pop("max_iter", 400)
+        self.activation = kwargs.pop("activation", "relu")
         super().__init__(**kwargs)
 
         self.pre_model, self.pre_r_squared = NeuralNetModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.PRE_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_neural_net(hidden_layer_sizes=self.hidden_layer_sizes, max_iter=self.max_iter)
+            self.data[self.data["C"] == COVIDStatus.PRE_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_neural_net(
+            hidden_layer_sizes=self.hidden_layer_sizes, max_iter=self.max_iter
+        )
 
         self.post_model, self.post_r_squared = NeuralNetModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.POST_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_neural_net(hidden_layer_sizes=self.hidden_layer_sizes, max_iter=self.max_iter)
+            self.data[self.data["C"] == COVIDStatus.POST_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_neural_net(
+            hidden_layer_sizes=self.hidden_layer_sizes, max_iter=self.max_iter
+        )
 
-
-
-        self.model_type_specific = {"model": "NN",
-                                    "alpha": self.alpha,
-                               "max_iter": self.max_iter,
-                               "activation": self.activation,
-                               "hidden_layers": list(self.hidden_layer_sizes)}
+        self.model_type_specific = {
+            "model": "NN",
+            "alpha": self.alpha,
+            "max_iter": self.max_iter,
+            "activation": self.activation,
+            "hidden_layers": list(self.hidden_layer_sizes),
+        }
         self.document()
+
 
 class WBRandomForestModel(WBModel):
     def __init__(self, **kwargs):
-        self.n_estimators = kwargs.pop('n_estimators', 100)
-        self.ccp_alpha = kwargs.pop('ccp_alpha', 1e-5)
+        self.n_estimators = kwargs.pop("n_estimators", 100)
+        self.ccp_alpha = kwargs.pop("ccp_alpha", 1e-5)
         super().__init__(**kwargs)
 
         self.pre_model, self.pre_r_squared = RandomForestModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.PRE_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_random_forest(n_estimators=self.n_estimators, ccp_alpha=self.ccp_alpha)
+            self.data[self.data["C"] == COVIDStatus.PRE_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_random_forest(
+            n_estimators=self.n_estimators, ccp_alpha=self.ccp_alpha
+        )
 
         self.post_model, self.post_r_squared = RandomForestModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.POST_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_random_forest(n_estimators=self.n_estimators, ccp_alpha=self.ccp_alpha)
+            self.data[self.data["C"] == COVIDStatus.POST_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_random_forest(
+            n_estimators=self.n_estimators, ccp_alpha=self.ccp_alpha
+        )
 
-        self.model_type_specific = {"type": "random forest",
-                                    "n_estimators": self.n_estimators,
-                                    "ccp_alpha": self.ccp_alpha}
+        self.model_type_specific = {
+            "type": "random forest",
+            "n_estimators": self.n_estimators,
+            "ccp_alpha": self.ccp_alpha,
+        }
         self.document()
+
 
 class WBLinearModel(WBModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         self.pre_model, self.pre_r_squared = LinearModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.PRE_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_linear_model()
+            self.data[self.data["C"] == COVIDStatus.PRE_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_linear_model()
 
         self.post_model, self.post_r_squared = LinearModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.POST_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_linear_model()
+            self.data[self.data["C"] == COVIDStatus.POST_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_linear_model()
 
         self.model_type_specific = {"type": "linear"}
         self.document()
 
 
-
 class WBKernelModel(WBModel):
     def __init__(self, **kwargs):
-        self.alpha = kwargs.pop('alpha', 1)
-        self.gamma = kwargs.pop('gamma', None)
+        self.alpha = kwargs.pop("alpha", 1)
+        self.gamma = kwargs.pop("gamma", None)
         super().__init__(**kwargs)
 
         self.pre_model, self.pre_r_squared = KernelModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.PRE_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_gaussian_kernel_model(alpha=self.alpha, gamma=self.gamma)
+            self.data[self.data["C"] == COVIDStatus.PRE_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_gaussian_kernel_model(alpha=self.alpha, gamma=self.gamma)
 
         self.post_model, self.post_r_squared = KernelModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.POST_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_gaussian_kernel_model(alpha=self.alpha, gamma=self.gamma)
+            self.data[self.data["C"] == COVIDStatus.POST_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_gaussian_kernel_model(alpha=self.alpha, gamma=self.gamma)
 
         self.model_type_specific = {
-            "type": "Gaussian kernel", "alpha": self.alpha, "gamma": self.gamma}
+            "type": "Gaussian kernel",
+            "alpha": self.alpha,
+            "gamma": self.gamma,
+        }
         self.document()
+
 
 class WBLinearPolyModel(WBModel):
     def __init__(self, **kwargs):
-        self.degree = kwargs.pop('degree', 2)
+        self.degree = kwargs.pop("degree", 2)
 
         super().__init__(**kwargs)
 
         self.pre_model, self.pre_r_squared = LinearModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.PRE_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_polynomial_model(degree=self.degree)
+            self.data[self.data["C"] == COVIDStatus.PRE_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_polynomial_model(degree=self.degree)
 
         self.post_model, self.post_r_squared = LinearModelBuilder(
-            self.data[self.data['C'] == COVIDStatus.POST_COVID],
-            self.outcome, covariates=self.model_covariates
-            ).fit_polynomial_model(degree=self.degree)
+            self.data[self.data["C"] == COVIDStatus.POST_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_polynomial_model(degree=self.degree)
 
         self.model_type_specific = {
-            "type": "linear with poly features", "degree": self.degree}
+            "type": "linear with poly features",
+            "degree": self.degree,
+        }
         self.document()
-
 
 
 def aggregate_results_from_subfolders(base_folder):
@@ -545,20 +689,24 @@ def aggregate_results_from_subfolders(base_folder):
     # Iterate over all subfolders in the base folder
     for subfolder in base_path.iterdir():
         # Check if the subfolder matches the format YYYYMMDD_HHMMSS
-        if subfolder.is_dir() and subfolder.name.count('_') == 2:
+        if subfolder.is_dir() and subfolder.name.count("_") == 2:
             # Define the path to the results.json file
-            results_file = subfolder / 'results.json'
+            results_file = subfolder / "results.json"
 
             # Check if the results.json file exists
             if results_file.exists():
                 # Read and parse the JSON file
-                with results_file.open('r') as f:
+                with results_file.open("r") as f:
                     data = json.load(f)
                     all_data.append(data)
 
     # Create a DataFrame from the aggregated data
     df = pd.DataFrame(all_data)
-    df['pre_r_squared test'] = pd.to_numeric(df['pre_r_squared test'], errors='coerce')
-    df['pre_r_squared train'] = pd.to_numeric(df['pre_r_squared train'], errors='coerce')
-    df.sort_values(by='pre_r_squared test', ascending=False, inplace=True)
+    df["pre_r_squared test"] = pd.to_numeric(
+        df["pre_r_squared test"], errors="coerce"
+    )
+    df["pre_r_squared train"] = pd.to_numeric(
+        df["pre_r_squared train"], errors="coerce"
+    )
+    df.sort_values(by="pre_r_squared test", ascending=False, inplace=True)
     return df
