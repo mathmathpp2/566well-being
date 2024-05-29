@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from sklearn.linear_model import Lasso
-from sklearn.linear_model import LinearRegression  # type: ignore
+from sklearn.linear_model import LinearRegression, Ridge  # type: ignore
 from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures  # type: ignore
 from sklearn.ensemble import RandomForestRegressor  # type: ignore
@@ -40,72 +40,6 @@ num_prior_days = 10
 date_covid = datetime(2020, 3, 1)
 # rough date
 date_vaccine = datetime(2021, 4, 1)
-
-
-# class COVIDStatus(enum.Enum):
-#     PRE_COVID = 0
-#     POST_COVID = 1
-
-#     def __str__(self):
-#         return f"{self.name}"
-
-
-# ema_dictionary = {
-#     "Y1": "pam",
-#     "Y2": "phq4_score",
-#     "Y3": "phq2_score",
-#     "Y4": "gad2_score",
-#     "Y5": "social_level",
-#     "Y6": "sse_score",
-#     "Y7": "stress",
-# }
-# reverse_ema_dictionary = {v: k for k, v in ema_dictionary.items()}
-
-# physical_dictionary = {
-#     "P1": "excercise (seconds)",
-#     "P2": "studying (hours)",
-#     "P3": "in house (hours)",
-#     "P4": "sports (hours)",
-# }
-# social_dictionary = {
-#     "S1": "traveling (seconds)",
-#     "S2": "distance traveled (meters)",
-#     "S3": "time in social location (hours)",
-#     "S4": "visits",
-#     "S5": "duration unlocked phone in social locations (minutes)",
-#     "S6": "frequency of unlocked phone in social locations",
-#     "S7": "motion at social locations (minutes)",
-# }
-
-# sleep_dictionary = {
-#     "Z1": "sleep_duration",
-#     "Z2": "sleep start time",
-#     "Z3": "sleep end time",
-# }
-
-
-# demographic_dictionary = {
-#     "D1": "gender",
-#     "D2": "race",
-#     "D3": "os",
-#     "D4": "cohort year",
-# }
-
-
-# full_dictionary = (
-#     physical_dictionary
-#     | social_dictionary
-#     | sleep_dictionary
-#     | ema_dictionary
-#     | {"C": COVIDStatus}
-#     | demographic_dictionary
-# )
-
-# ema = [f"Y{i}" for i in range(1, 8, 1)]
-# physical = [f"P{i}" for i in range(1, 5, 1)]
-# social = [f"S{i}" for i in range(1, 8, 1)]
-# sleep = [f"Z{i}" for i in range(1, 4, 1)]
-# demographic = [f"D{i}" for i in range(1, 5, 1)]
 
 datafile = "../data/features_v3.csv"
 # _longest is actually shorter and only has the Y-s ?
@@ -187,7 +121,6 @@ class RandomForestModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
         mae = mean_absolute_error(y_test, y_pred_test)
-        mae = mean_absolute_error(y_test, y_pred_test)
         self.model = model
         return model, (r2_train, r2_test, mae)
 
@@ -198,7 +131,9 @@ class LinearModelBuilder:
         self.outcome = outcome
         self.covariates = covariates
 
-    def fit_linear_model(self, test_size=0.2, random_state=None):
+    def fit_linear_model(
+        self, test_size=0.2, random_state=None, alpha: int = 0
+    ):
         # Extract the X (covariates) and y (outcome) from the data
         X = self.data[list(self.covariates)]
         y = self.data[self.outcome]
@@ -209,7 +144,7 @@ class LinearModelBuilder:
         )
 
         # Create and fit the linear regression model
-        model = LinearRegression(n_jobs=NJOBS)
+        model = Ridge(alpha=alpha)
         model.fit(X_train, y_train)
 
         # Predict the outcome on the testing data
@@ -218,11 +153,18 @@ class LinearModelBuilder:
         r2_train = r2_score(y_train, y_pred_train)
         r2_test = r2_score(y_test, y_pred_test)
 
-        mae = mean_absolute_error(y_test, y_pred_test)
+        test_residuals = y_test - y_pred_test
+        train_residuals = y_train - y_pred_train
+
+        # Compute the mean error
+        # (not mean absolute, not mean square)
+        train_mean_average_error = np.mean(train_residuals) / len(y_train)
+        test_mean_average_error = np.mean(test_residuals) / len(y_test)
+
         self.model = model
         # Return the fitted model and the R^2 scores
         # for training and testing sets
-        return model, (r2_train, r2_test, mae)
+        return model, (r2_train, r2_test, test_mean_average_error)
 
     def fit_polynomial_model(self, degree, test_size=0.2, random_state=None):
         # Extract the X (covariates) and y (outcome) from the data
@@ -431,15 +373,13 @@ class WBModel:
             )
         else:
             if set(self.data[self.treatment].unique()) != {0, 1}:
+                q = np.percentile(self.data[self.treatment], 75)
                 logger.debug(
-                    "Binarizing using median value "
+                    "Binarizing using value "
                     f"({full_dictionary[self.treatment]} "
-                    f"median={self.data[self.treatment].median():.2e})"
+                    f"q={q:.2e})"
                 )
-                self.data[self.treatment] = (
-                    self.data[self.treatment]
-                    > self.data[self.treatment].median()
-                )
+                self.data[self.treatment] = self.data[self.treatment] > q
 
         self.covariates_dictionary = {
             key: value
@@ -477,7 +417,9 @@ class WBModel:
         postcovid_ace = self.ace(COVIDStatus.POST_COVID)
         precovid_ace = self.ace(COVIDStatus.PRE_COVID)
         difference_of_ace = self.ace_post_minus_pre()
-        relative_difference_of_ace = 100 * difference_of_ace / np.abs(precovid_ace)
+        relative_difference_of_ace = (
+            100 * difference_of_ace / np.abs(precovid_ace)
+        )
 
         results_json = {
             "pre_r_squared test": f"{self.pre_r_squared[1]:.2e}",
@@ -504,6 +446,9 @@ class WBModel:
             json.dump(results_json | self.model_type_specific, f, indent=4)
 
     def y_hat(self, era: COVIDStatus, actual: bool):
+        # returns a vector of values obtained when all
+        # the units received the treatement 'actual', by using the model that
+        # was fit on units that actually received the treatment 'actual'
         # select only era data (either post or pre covid)
         era_data = self.data[self.data["C"] == era]
         # data for which the treatment was 'actual'
@@ -536,9 +481,11 @@ class WBModel:
         return y_hat
 
     def ace(self, era: COVIDStatus):
+        # ACE for self.treatment, either in the post or in the pre-covid era.
         return self.y_hat(era, True).mean() - self.y_hat(era, False).mean()
 
     def ace_post_minus_pre(self):
+        # ACE in the post-pandemic era minus ACE in the pre-pandemic era.
         return self.ace(COVIDStatus.POST_COVID) - self.ace(
             COVIDStatus.PRE_COVID
         )
@@ -638,21 +585,26 @@ class WBRandomForestModel(WBModel):
 
 class WBLinearModel(WBModel):
     def __init__(self, **kwargs):
+        self.alpha = kwargs.pop("alpha", 0)
         super().__init__(**kwargs)
 
         self.pre_model, self.pre_r_squared = LinearModelBuilder(
             self.data[self.data["C"] == COVIDStatus.PRE_COVID],
             self.outcome,
             covariates=self.covariates,
-        ).fit_linear_model()
+        ).fit_linear_model(alpha=self.alpha)
 
         self.post_model, self.post_r_squared = LinearModelBuilder(
             self.data[self.data["C"] == COVIDStatus.POST_COVID],
             self.outcome,
             covariates=self.covariates,
-        ).fit_linear_model()
+        ).fit_linear_model(alpha=self.alpha)
 
-        self.model_type_specific = {"type": "linear"}
+        self.model_type_specific = {
+            "type": "linear",
+            "alpha": self.alpha,
+            "mean_average_error": self.pre_r_squared[2],
+        }
         self.document()
 
 
@@ -730,13 +682,11 @@ def aggregate_results_from_subfolders(base_folder):
 
     # Create a DataFrame from the aggregated data
     df = pd.DataFrame(all_data)
-    df["pre_r_squared test"] = pd.to_numeric(
-        df["pre_r_squared test"], errors="coerce"
+
+    df["difference of ACE"] = pd.to_numeric(
+        df["difference of ACE"], errors="coerce"
     )
-    df["pre_r_squared train"] = pd.to_numeric(
-        df["pre_r_squared train"], errors="coerce"
-    )
-    df.sort_values(by="pre_r_squared test", ascending=False, inplace=True)
+
     return df
 
 
@@ -800,7 +750,7 @@ class CovariateSet:
             (self.restricted_adjustment_set is not None)
             and (len(self.restricted_adjustment_set) != 0)
             # exclude demographics
-            and (not self.treatment.startswith("D"))
+            # and (not self.treatment.startswith("D"))
             and (self.outcome not in self.outcomes_to_skip)
             and (self.treatment not in self.treatments_to_skip)
         )

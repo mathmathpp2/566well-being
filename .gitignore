@@ -135,7 +135,10 @@ venv.bak/
 566env/
 notebooks/2*
 temp/
-
+notebooks/first*
+notebooks/second*
+notebooks/third*
+notebooks/median*
 # Spyder project settings
 .spyderproject
 .spyproject

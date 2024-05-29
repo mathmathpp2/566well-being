@@ -21,19 +21,19 @@ ema_dictionary = {
 reverse_ema_dictionary = {v: k for k, v in ema_dictionary.items()}
 
 physical_dictionary = {
-    "P1": "excercise (seconds)",
-    "P2": "studying (hours)",
-    "P3": "in house (hours)",
-    "P4": "sports (hours)",
+    "P1": "Exercise",
+    "P2": "Studying",
+    "P3": "At home",
+    "P4": "Sports",
 }
 social_dictionary = {
-    "S1": "traveling (seconds)",
-    "S2": "distance traveled (meters)",
-    "S3": "time in social location (hours)",
-    "S4": "visits",
-    "S5": "duration unlocked phone in social locations (minutes)",
-    "S6": "frequency of unlocked phone in social locations",
-    "S7": "motion at social locations (minutes)",
+    "S1": "Traveling",
+    "S2": "Distance traveled",
+    "S3": "Time in social loc.",
+    "S4": "Visits",
+    "S5": "Duration unlocked phone in social loc.",
+    "S6": "Frequency of unlocked phone in social loc.",
+    "S7": "Motion at social locations",
 }
 
 sleep_dictionary = {
