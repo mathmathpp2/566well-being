@@ -1,4 +1,5 @@
 import enum
+from multiprocessing.dummy import Value
 from typing import Union, Set
 from datetime import datetime
 import humanize
@@ -8,6 +9,8 @@ import logging
 
 import numpy as np
 import pandas as pd
+
+from sklearn.linear_model import Lasso
 from sklearn.linear_model import LinearRegression  # type: ignore
 from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures  # type: ignore
@@ -20,6 +23,7 @@ from sklearn.metrics import r2_score, mean_absolute_error
 
 from utils import get_git_root
 from pretty_logger import get_logger
+from names import *
 
 project_root = get_git_root()
 
@@ -38,75 +42,111 @@ date_covid = datetime(2020, 3, 1)
 date_vaccine = datetime(2021, 4, 1)
 
 
-class COVIDStatus(enum.Enum):
-    PRE_COVID = 0
-    POST_COVID = 1
+# class COVIDStatus(enum.Enum):
+#     PRE_COVID = 0
+#     POST_COVID = 1
 
-    def __str__(self):
-        return f"{self.name}"
-
-
-ema_dictionary = {
-    "Y1": "pam",
-    "Y2": "phq4_score",
-    "Y3": "phq2_score",
-    "Y4": "gad2_score",
-    "Y5": "social_level",
-    "Y6": "sse_score",
-    "Y7": "stress",
-}
-reverse_ema_dictionary = {v: k for k, v in ema_dictionary.items()}
-
-physical_dictionary = {
-    "P1": "excercise (seconds)",
-    "P2": "studying (hours)",
-    "P3": "in house (hours)",
-    "P4": "sports (hours)",
-}
-social_dictionary = {
-    "S1": "traveling (seconds)",
-    "S2": "distance traveled (meters)",
-    "S3": "time in social location (hours)",
-    "S4": "visits",
-    "S5": "duration unlocked phone in social locations (minutes)",
-    "S6": "frequency of unlocked phone in social locations",
-    "S7": "motion at social locations (minutes)",
-}
-
-sleep_dictionary = {
-    "Z1": "sleep_duration",
-    "Z2": "sleep start time",
-    "Z3": "sleep end time",
-}
+#     def __str__(self):
+#         return f"{self.name}"
 
 
-demographic_dictionary = {
-    "D1": "gender",
-    "D2": "race",
-    "D3": "os",
-    "D4": "cohort year",
-}
+# ema_dictionary = {
+#     "Y1": "pam",
+#     "Y2": "phq4_score",
+#     "Y3": "phq2_score",
+#     "Y4": "gad2_score",
+#     "Y5": "social_level",
+#     "Y6": "sse_score",
+#     "Y7": "stress",
+# }
+# reverse_ema_dictionary = {v: k for k, v in ema_dictionary.items()}
+
+# physical_dictionary = {
+#     "P1": "excercise (seconds)",
+#     "P2": "studying (hours)",
+#     "P3": "in house (hours)",
+#     "P4": "sports (hours)",
+# }
+# social_dictionary = {
+#     "S1": "traveling (seconds)",
+#     "S2": "distance traveled (meters)",
+#     "S3": "time in social location (hours)",
+#     "S4": "visits",
+#     "S5": "duration unlocked phone in social locations (minutes)",
+#     "S6": "frequency of unlocked phone in social locations",
+#     "S7": "motion at social locations (minutes)",
+# }
+
+# sleep_dictionary = {
+#     "Z1": "sleep_duration",
+#     "Z2": "sleep start time",
+#     "Z3": "sleep end time",
+# }
 
 
-full_dictionary = (
-    physical_dictionary
-    | social_dictionary
-    | sleep_dictionary
-    | ema_dictionary
-    | {"C": COVIDStatus}
-    | demographic_dictionary
-)
+# demographic_dictionary = {
+#     "D1": "gender",
+#     "D2": "race",
+#     "D3": "os",
+#     "D4": "cohort year",
+# }
 
-ema = [f"Y{i}" for i in range(1, 8, 1)]
-physical = [f"P{i}" for i in range(1, 5, 1)]
-social = [f"S{i}" for i in range(1, 8, 1)]
-sleep = [f"Z{i}" for i in range(1, 4, 1)]
-demographic = [f"D{i}" for i in range(1, 5, 1)]
+
+# full_dictionary = (
+#     physical_dictionary
+#     | social_dictionary
+#     | sleep_dictionary
+#     | ema_dictionary
+#     | {"C": COVIDStatus}
+#     | demographic_dictionary
+# )
+
+# ema = [f"Y{i}" for i in range(1, 8, 1)]
+# physical = [f"P{i}" for i in range(1, 5, 1)]
+# social = [f"S{i}" for i in range(1, 8, 1)]
+# sleep = [f"Z{i}" for i in range(1, 4, 1)]
+# demographic = [f"D{i}" for i in range(1, 5, 1)]
 
 datafile = "../data/features_v3.csv"
 # _longest is actually shorter and only has the Y-s ?
 sets_file = "../2.causal discovery/pc_ici_longest.parquet"
 # sets_file = "../2.causal discovery/pc_ici.parquet"
+
+
+class LassoModelBuilder:
+    def __init__(self, data, outcome, covariates):
+        self.data = data
+        self.outcome = outcome
+        self.covariates = covariates
+
+    def fit_lasso(
+        self,
+        test_size=0.2,
+        random_state=None,
+        alpha=1.0,
+    ):
+        # Extract the X (covariates) and y (outcome) from the data
+        X = self.data[list(self.covariates)]
+        y = self.data[self.outcome]
+
+        # Split the data into training and testing sets
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
+
+        model = Lasso(alpha=alpha, random_state=random_state)
+
+        model.fit(X_train, y_train)
+
+        # Predict the outcome on the training and testing data
+        y_pred_train = model.predict(X_train)
+        y_pred_test = model.predict(X_test)
+        r2_train = r2_score(y_train, y_pred_train)
+        r2_test = r2_score(y_test, y_pred_test)
+        mae = mean_absolute_error(y_test, y_pred_test)
+
+        self.model = model
+        return model, (r2_train, r2_test, mae)
 
 
 class RandomForestModelBuilder:
@@ -131,22 +171,14 @@ class RandomForestModelBuilder:
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=random_state
         )
-
-        model = Pipeline(
-            [
-                ("scaler", StandardScaler()),
-                (
-                    "regressor",
-                    RandomForestRegressor(
-                        n_estimators=n_estimators,
-                        max_depth=max_depth,
-                        random_state=random_state,
-                        n_jobs=NJOBS,
-                        ccp_alpha=1e-4,
-                    ),
-                ),
-            ]
+        model = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            n_jobs=NJOBS,
+            ccp_alpha=1e-4,
         )
+
         model.fit(X_train, y_train)
 
         # Predict the outcome on the training and testing data
@@ -157,8 +189,6 @@ class RandomForestModelBuilder:
         mae = mean_absolute_error(y_test, y_pred_test)
         mae = mean_absolute_error(y_test, y_pred_test)
         self.model = model
-        # Return the fitted model and the R^2 scores
-        # for training and testing sets
         return model, (r2_train, r2_test, mae)
 
 
@@ -170,7 +200,7 @@ class LinearModelBuilder:
 
     def fit_linear_model(self, test_size=0.2, random_state=None):
         # Extract the X (covariates) and y (outcome) from the data
-        X = self.data[self.covariates]
+        X = self.data[list(self.covariates)]
         y = self.data[self.outcome]
 
         # Split the data into training and testing sets
@@ -179,7 +209,7 @@ class LinearModelBuilder:
         )
 
         # Create and fit the linear regression model
-        model = LinearRegression()
+        model = LinearRegression(n_jobs=NJOBS)
         model.fit(X_train, y_train)
 
         # Predict the outcome on the testing data
@@ -196,7 +226,7 @@ class LinearModelBuilder:
 
     def fit_polynomial_model(self, degree, test_size=0.2, random_state=None):
         # Extract the X (covariates) and y (outcome) from the data
-        X = self.data[self.covariates]
+        X = self.data[list(self.covariates)]
         y = self.data[self.outcome]
 
         # Generate polynomial and interaction features
@@ -231,18 +261,49 @@ class KernelModelBuilder:
         self.outcome = outcome
         self.covariates = covariates
 
-    def fit_linear_model(self, test_size=0.2, random_state=None, alpha=1.0):
+    # def fit_linear_model(self, test_size=0.2, random_state=None, alpha=1.0):
+    #     # Extract the X (covariates) and y (outcome) from the data
+    #     self.alpha = alpha
+    #     X = self.data[list(self.covariates)]
+    #     y = self.data[self.outcome]
+
+    #     # Split the data into training and testing sets
+    #     X_train, X_test, y_train, y_test = train_test_split(
+    #         X, y, test_size=test_size, random_state=random_state
+    #     )
+
+    #     # Create and fit the linear regression model
+    #     model = KernelRidge(kernel="linear", alpha=alpha)
+    #     model.fit(X_train, y_train)
+
+    #     # Predict the outcome on the training and testing data
+    #     y_pred_train = model.predict(X_train)
+    #     y_pred_test = model.predict(X_test)
+    #     r2_train = r2_score(y_train, y_pred_train)
+    #     r2_test = r2_score(y_test, y_pred_test)
+
+    #     # Return the fitted model and the R^2 scores
+    #     # for training and testing sets
+    #     mae = mean_absolute_error(y_test, y_pred_test)
+    #     self.model = model
+    #     # Return the fitted model and the R^2 scores
+    #     # for training and testing sets
+    #     return model, (r2_train, r2_test, mae)
+
+    def fit_gaussian_kernel_model(
+        self, test_size=0.2, random_state=None, alpha=1.0, gamma=None
+    ):
         # Extract the X (covariates) and y (outcome) from the data
-        X = self.data[self.covariates]
+        X = self.data[list(self.covariates)]
         y = self.data[self.outcome]
 
         # Split the data into training and testing sets
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=random_state
         )
-
-        # Create and fit the linear regression model
-        model = KernelRidge(kernel="linear", alpha=alpha)
+        model = KernelRidge(kernel="rbf", alpha=alpha, gamma=gamma)
+        model.fit(X_train, y_train)
+        # Create and fit the Gaussian kernel regression model
         model.fit(X_train, y_train)
 
         # Predict the outcome on the training and testing data
@@ -258,41 +319,6 @@ class KernelModelBuilder:
         # Return the fitted model and the R^2 scores
         # for training and testing sets
         return model, (r2_train, r2_test, mae)
-
-    def fit_gaussian_kernel_model(
-        self, test_size=0.2, random_state=None, alpha=1.0, gamma=None
-    ):
-        # Extract the X (covariates) and y (outcome) from the data
-        X = self.data[self.covariates]
-        y = self.data[self.outcome]
-
-        # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state
-        )
-        model = Pipeline(
-            [
-                ("scaler", StandardScaler()),
-                (
-                    "regressor",
-                    KernelRidge(kernel="rbf", alpha=alpha, gamma=gamma),
-                ),
-            ]
-        )
-        model.fit(X_train, y_train)
-        # Create and fit the Gaussian kernel regression model
-        model.fit(X_train, y_train)
-
-        # Predict the outcome on the training and testing data
-        y_pred_train = model.predict(X_train)
-        y_pred_test = model.predict(X_test)
-        r2_train = r2_score(y_train, y_pred_train)
-        r2_test = r2_score(y_test, y_pred_test)
-
-        # Return the fitted model and the R^2 scores
-        # for training and testing sets
-        self.model = model
-        return model, (r2_train, r2_test)
 
     def predict(self, X_new):
         return self.model.predict(X_new)
@@ -448,20 +474,18 @@ class WBModel:
 
         # Calculate the time taken to fit the model
         self.fit_time = end_time - self.start_time
-        postcovid_ace = self.postcovid_ace()
-        precovid_ace = self.precovid_ace()
-        difference_of_ace = postcovid_ace - precovid_ace
-        relative_difference_of_ace = 100*difference_of_ace / precovid_ace
+        postcovid_ace = self.ace(COVIDStatus.POST_COVID)
+        precovid_ace = self.ace(COVIDStatus.PRE_COVID)
+        difference_of_ace = self.ace_post_minus_pre()
+        relative_difference_of_ace = 100 * difference_of_ace / np.abs(precovid_ace)
 
         results_json = {
             "pre_r_squared test": f"{self.pre_r_squared[1]:.2e}",
             "pre_r_squared train": f"{self.pre_r_squared[0]:.2e}",
             "post_r_squared test": f"{self.post_r_squared[1]:.2e}",
             "post_r_squared train": f"{self.post_r_squared[0]:.2e}",
-            "pre_mae test": f"{self.pre_r_squared[2]:.2e}",
-            "post_mae test": f"{self.post_r_squared[2]:.2e}",
-            "postcovid ACE": f"{precovid_ace:.2e}",
-            "precovid ACE": f"{postcovid_ace:.2e}",
+            "postcovid ACE": f"{postcovid_ace:.2e}",
+            "precovid ACE": f"{precovid_ace:.2e}",
             "difference of ACE": f"{difference_of_ace:.2e}",
             "Relative difference of ACE": f"{relative_difference_of_ace:.2e}",
             "time": humanize.precisedelta(self.fit_time),
@@ -479,71 +503,44 @@ class WBModel:
         with open(Path(self.folder_path, "results.json"), "w") as f:
             json.dump(results_json | self.model_type_specific, f, indent=4)
 
-    def predict_counterfactural_mean(
-        self, covid_stage: COVIDStatus, counter_factual_treatment: bool
-    ):
-        """_summary_
-        wvb.predict_counterfactural_mean(COVIDStatus.PRECOVID, True)
-        is the counterfactual
-        :param counter_factual_treatment: _description_
-        :type counter_factual_treatment: bool
-        :param covid_stage: _description_
-        :type covid_stage: COVIDStatus
-        :return: _description_
-        :rtype: _type_
-        """
-        # slide 16 lecture 3
-        data_actual = self.data[
-            self.data[self.treatment] == counter_factual_treatment
+    def y_hat(self, era: COVIDStatus, actual: bool):
+        # select only era data (either post or pre covid)
+        era_data = self.data[self.data["C"] == era]
+        # data for which the treatment was 'actual'
+        era_data_factual = era_data[era_data[self.treatment] == actual].copy()
+
+        # select data for which the treatment was not 'actual'
+        # and flip the value of treatment to actual.
+        # There datapoints are now counterfactuals
+        # We will use our models to estimate the counterfactual outcome values
+        era_data_counterfactual = era_data[
+            era_data[self.treatment] != actual
         ].copy()
-        data_counterfactual = self.data[
-            self.data[self.treatment] != counter_factual_treatment
-        ].copy()
-        data_counterfactual[self.treatment] = counter_factual_treatment
+        era_data_counterfactual[self.treatment] = actual
 
-        data = pd.concat([data_actual, data_counterfactual])
-
-        X_counterfactual = data[list(self.covariates)]
-        if covid_stage == COVIDStatus.PRE_COVID:
-            return self.pre_model.predict(X_counterfactual)
-
-        elif covid_stage == COVIDStatus.POST_COVID:
-            return self.post_model.predict(X_counterfactual)
-
-    def precovid_ace(self):
-        # difference of Y(1) and Y(0) in the precovid world
-        Y_of_1 = np.mean(
-            self.predict_counterfactural_mean(
-                COVIDStatus.PRE_COVID, counter_factual_treatment=True
+        if era == COVIDStatus.PRE_COVID:
+            mu_counterfactual = self.pre_model.predict(
+                era_data_counterfactual[list(self.covariates)]
             )
-        )
-        Y_of_0 = np.mean(
-            self.predict_counterfactural_mean(
-                COVIDStatus.PRE_COVID, counter_factual_treatment=False
-            )
-        )
-        return Y_of_1 - Y_of_0
 
-    def postcovid_ace(self):
-        # difference of Y(1) and Y(0) in the postcovid world
-        Y_of_1 = np.mean(
-            self.predict_counterfactural_mean(
-                COVIDStatus.POST_COVID, counter_factual_treatment=True
+        elif era == COVIDStatus.POST_COVID:
+            mu_counterfactual = self.post_model.predict(
+                era_data_counterfactual[list(self.covariates)]
             )
-        )
-        Y_of_0 = np.mean(
-            self.predict_counterfactural_mean(
-                COVIDStatus.POST_COVID, counter_factual_treatment=False
-            )
-        )
-        return Y_of_1 - Y_of_0
+        else:
+            raise ValueError("There should be only two eras")
 
-    @property
-    def summary(self):
-        print(
-            f"pre-covid ACE: {self.pre_ace}, post_covid:{self.post_ace}"
-            f"pre_r_squared: {self.pre_r_squared}, "
-            f"post_r_squared: {self.post_r_squared}"
+        y_hat = np.concatenate(
+            [era_data_factual[self.outcome].values, mu_counterfactual]
+        )
+        return y_hat
+
+    def ace(self, era: COVIDStatus):
+        return self.y_hat(era, True).mean() - self.y_hat(era, False).mean()
+
+    def ace_post_minus_pre(self):
+        return self.ace(COVIDStatus.POST_COVID) - self.ace(
+            COVIDStatus.PRE_COVID
         )
 
 
@@ -581,12 +578,39 @@ class WBNeuralNetModel(WBModel):
         self.document()
 
 
+class WBLassoModel(WBModel):
+    def __init__(self, **kwargs):
+        self.alpha = kwargs.pop("alpha", 1e-5)
+        super().__init__(**kwargs)
+
+        # fit a model only on the precovid data
+        self.pre_model, self.pre_r_squared = LassoModelBuilder(
+            self.data[self.data["C"] == COVIDStatus.PRE_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_lasso(alpha=self.alpha)
+
+        # fit a model only on the postcovid data
+        self.post_model, self.post_r_squared = LassoModelBuilder(
+            self.data[self.data["C"] == COVIDStatus.POST_COVID],
+            self.outcome,
+            covariates=self.covariates,
+        ).fit_lasso(alpha=self.alpha)
+
+        self.model_type_specific = {
+            "type": "lasso",
+            "alpha": self.alpha,
+        }
+        self.document()
+
+
 class WBRandomForestModel(WBModel):
     def __init__(self, **kwargs):
         self.n_estimators = kwargs.pop("n_estimators", 100)
         self.ccp_alpha = kwargs.pop("ccp_alpha", 1e-5)
         super().__init__(**kwargs)
 
+        # fit a model only on the precovid data
         self.pre_model, self.pre_r_squared = RandomForestModelBuilder(
             self.data[self.data["C"] == COVIDStatus.PRE_COVID],
             self.outcome,
@@ -595,6 +619,7 @@ class WBRandomForestModel(WBModel):
             n_estimators=self.n_estimators, ccp_alpha=self.ccp_alpha
         )
 
+        # fit a model only on the postcovid data
         self.post_model, self.post_r_squared = RandomForestModelBuilder(
             self.data[self.data["C"] == COVIDStatus.POST_COVID],
             self.outcome,
