@@ -203,35 +203,6 @@ class KernelModelBuilder:
         self.outcome = outcome
         self.covariates = covariates
 
-    # def fit_linear_model(self, test_size=0.2, random_state=None, alpha=1.0):
-    #     # Extract the X (covariates) and y (outcome) from the data
-    #     self.alpha = alpha
-    #     X = self.data[list(self.covariates)]
-    #     y = self.data[self.outcome]
-
-    #     # Split the data into training and testing sets
-    #     X_train, X_test, y_train, y_test = train_test_split(
-    #         X, y, test_size=test_size, random_state=random_state
-    #     )
-
-    #     # Create and fit the linear regression model
-    #     model = KernelRidge(kernel="linear", alpha=alpha)
-    #     model.fit(X_train, y_train)
-
-    #     # Predict the outcome on the training and testing data
-    #     y_pred_train = model.predict(X_train)
-    #     y_pred_test = model.predict(X_test)
-    #     r2_train = r2_score(y_train, y_pred_train)
-    #     r2_test = r2_score(y_test, y_pred_test)
-
-    #     # Return the fitted model and the R^2 scores
-    #     # for training and testing sets
-    #     mae = mean_absolute_error(y_test, y_pred_test)
-    #     self.model = model
-    #     # Return the fitted model and the R^2 scores
-    #     # for training and testing sets
-    #     return model, (r2_train, r2_test, mae)
-
     def fit_gaussian_kernel_model(
         self, test_size=0.2, random_state=None, alpha=1.0, gamma=None
     ):
