@@ -1,0 +1,339 @@
+---
+title: "synthetic control"
+author: "Fumin Li"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+data <- read.csv("/Users/fuminli/Downloads/features.csv")
+```
+
+```{r}
+data <- data[,c(1,2,4,8,9,10,11,13,14,16,25)]
+data <- na.omit(data)
+```
+
+```{r}
+data$day_survey <-  as.Date(data$day_survey)
+data$day_survey <- floor_date(data$day_survey, "month")
+```
+
+# test we have which value?
+
+# normalization
+```{r}
+data$phq4_score <- (data$phq4_score - min(data$phq4_score))/(max(data$phq4_score) - min(data$phq4_score))
+data$sse_score <- (data$sse_score - min(data$sse_score))/(max(data$sse_score) - min(data$sse_score))
+data$stress <- (data$stress - min(data$stress))/(max(data$stress) - min(data$stress))
+data$P1 <- (data$P1 - 1000)/(max(data$P1) - 1000)
+data[data$P1<0,]$P1 = 0
+data$P3 <- data$P3/24
+data$Z1 <- data$Z1/12
+data[data$Z1>1,]$Z1 = 1
+```
+
+```{r}
+data <- data[data$P1 != 0 | data$P3 != 0,]
+data <- data[data$gender == "M"|data$gender == "F",]
+data <- data[data$race == "white" | data$race == "black" | data$race == "asian",]
+```
+
+
+# This part is used to fill in the missing data
+
+```{r}
+data_P1_P3 <- data[data$P3 != 0 & data$P1 !=0,]
+```
+
+```{r}
+model_P1 <- lm(P1~as.factor(race) + as.factor(gender) + P3 + Z1,data = data_P1_P3)
+model_P3 <- lm(P3~as.factor(race) + as.factor(gender) + P1 + Z1,data = data_P1_P3)
+```
+
+```{r}
+data[data$P1 == 0,]$P1 <- predict(model_P1, newdata = data[data$P1 == 0,])
+data[data$P3 == 0,]$P3 <- predict(model_P3, newdata = data[data$P3 == 0,])
+```
+
+```{r}
+data_month <- data %>%
+  group_by(uid, day_survey) %>%
+  summarize(
+    phq4_score= mean(phq4_score),
+    sse_score = mean(sse_score),
+    stress = mean(stress),
+    gender = first(gender),
+    race = first(race),
+    cohort_year = first(cohort_year),
+    P1 = mean(P1),
+    P3 = mean(P3),
+    Z1 = mean(Z1),
+    count = n())
+```
+
+```{r}
+data_month$day_survey <- as.character(data_month$day_survey)
+```
+
+```{r}
+data_month_2017 <- data_month[data_month$cohort_year == 2017,]
+data_month_2018 <- data_month[data_month$cohort_year == 2018,]
+```
+
+```{r}
+install.packages('tidysynth')
+library(tidysynth)
+```
+
+# change time
+
+```{r}
+date_to_month_number_2017 <- function(date_str, start_date_str="2017-09-01") {
+  
+  date <- as.Date(date_str)
+  start_date <- as.Date(start_date_str)
+  
+
+  year_diff <- as.numeric(format(date, "%Y")) - as.numeric(format(start_date, "%Y"))
+  month_diff <- as.numeric(format(date, "%m")) - as.numeric(format(start_date, "%m"))
+
+  
+  total_months <- year_diff * 12 + month_diff + 1
+  
+  return(total_months)
+}
+
+date_to_month_number_2018 <- function(date_str, start_date_str="2018-09-01") {
+
+  date <- as.Date(date_str)
+  start_date <- as.Date(start_date_str)
+  
+
+  year_diff <- as.numeric(format(date, "%Y")) - as.numeric(format(start_date, "%Y"))
+  month_diff <- as.numeric(format(date, "%m")) - as.numeric(format(start_date, "%m"))
+  
+
+  total_months <- year_diff * 12 + month_diff + 1
+  
+  return(total_months)
+}
+```
+
+```{r}
+data_month_2017$month <- date_to_month_number_2017(data_month_2017$day_survey)
+data_month_2018$month <- date_to_month_number_2018(data_month_2018$day_survey)
+```
+
+```{r}
+data_month_2017$uid <- as.numeric(factor(data_month_2017$uid)) + 1
+data_month_2018$uid <- 1
+
+data_month_2017$asian = 0
+data_month_2017$black = 0
+data_month_2017$white = 0
+data_month_2017$male = 0
+data_month_2017$female = 0
+
+data_month_2017[data_month_2017$race == "asian",]$asian = 1
+data_month_2017[data_month_2017$race == "black",]$black = 1
+data_month_2017[data_month_2017$race == "white",]$white = 1
+data_month_2017[data_month_2017$gender == "M",]$male = 1
+data_month_2017[data_month_2017$gender == "F",]$female = 1
+
+data_month_2018$asian = 0
+data_month_2018$black = 0
+data_month_2018$white = 0
+data_month_2018$male = 0
+data_month_2018$female = 0
+
+data_month_2018[data_month_2018$race == "asian",]$asian = 1
+data_month_2018[data_month_2018$race == "black",]$black = 1
+data_month_2018[data_month_2018$race == "white",]$white = 1
+data_month_2018[data_month_2018$gender == "M",]$male = 1
+data_month_2018[data_month_2018$gender == "F",]$female = 1
+
+```
+
+```{r}
+data_month_2018 <- data_month_2018 %>%
+  group_by(month) %>%
+  summarise(
+    uid = 1,
+    phq4_score = mean(phq4_score),
+    sse_score = mean(sse_score),
+    P1 = mean(P1),
+    P3 = mean(P3),
+    Z1 = mean(Z1),
+    asian = mean(asian),
+    black = mean(black),
+    white = mean(white),
+    male = mean(male),
+    female = mean(female)
+  )
+data_month_2018[c(1,2),] <- data_month_2018[c(2,1),]
+```
+
+```{r}
+data_month_2017 <- data_month_2017 %>%
+  group_by(uid, month) %>%
+  summarise(
+    phq4_score = mean(phq4_score),
+    sse_score = mean(sse_score),
+    P1 = mean(P1),
+    P3 = mean(P3),
+    Z1 = mean(Z1),
+    asian = mean(asian),
+    black = mean(black),
+    white = mean(white),
+    male = mean(male),
+    female = mean(female)
+  )
+```
+
+```{r}
+data_synthetic <- rbind(data_month_2018, data_month_2017)
+```
+
+```{r}
+all_combinations <- expand.grid(
+  uid = unique(data_synthetic$uid),  
+  month = 1:46 
+)
+
+complete_data <- merge(all_combinations, data_synthetic, by = c("uid", "month"), all.x = TRUE)
+
+for (uid in unique(data_synthetic$uid)) {
+  subset_data <- data_synthetic[data_synthetic$uid == uid, ]
+  for (column in c("P1", "P3", "Z1", "phq4_score")) {
+    complete_data[complete_data$uid == uid & is.na(complete_data[column]), column] <- subset_data[1, column]
+  }
+}
+
+print(complete_data)
+```
+
+# normalized complete_data
+
+```{r}
+complete_data$normalized_phq4_score <- 1
+for (i in 2:94) {
+  complete_data[complete_data$uid == i,]$normalized_phq4_score <- complete_data[complete_data$uid == i,]$phq4_score/complete_data[complete_data$uid == 1,]$phq4_score
+}
+```
+
+```{r}
+complete_data_valid <- complete_data[which(complete_data$uid %in% which(valid<2)),]
+row.names(complete_data_valid) = NULL
+complete_data_valid$uid <- as.numeric(factor(complete_data_valid$uid))
+complete_data_valid$season <- as.integer(ceiling(complete_data_valid$month / 3))
+```
+
+
+```{r}
+for (i in 1:46) {
+  complete_data_valid[complete_data_valid$month == i,]$sse_score <- replace(complete_data_valid[complete_data_valid$month == i,]$sse_score, is.na(complete_data_valid[complete_data_valid$month == i,]$sse_score), complete_data_valid[complete_data_valid$uid == 1 & complete_data_valid$month == i,]$sse_score)
+  
+  complete_data_valid[complete_data_valid$month == i,]$asian <- replace(complete_data_valid[complete_data_valid$month == i,]$asian, is.na(complete_data_valid[complete_data_valid$month == i,]$asian), complete_data_valid[complete_data_valid$uid == 1 & complete_data_valid$month == i,]$asian)
+  
+  complete_data_valid[complete_data_valid$month == i,]$black <- replace(complete_data_valid[complete_data_valid$month == i,]$black, is.na(complete_data_valid[complete_data_valid$month == i,]$black), complete_data_valid[complete_data_valid$uid == 1 & complete_data_valid$month == i,]$black)
+  
+  complete_data_valid[complete_data_valid$month == i,]$white <- replace(complete_data_valid[complete_data_valid$month == i,]$white, is.na(complete_data_valid[complete_data_valid$month == i,]$white), complete_data_valid[complete_data_valid$uid == 1 & complete_data_valid$month == i,]$white)
+  
+  complete_data_valid[complete_data_valid$month == i,]$female <- replace(complete_data_valid[complete_data_valid$month == i,]$female, is.na(complete_data_valid[complete_data_valid$month == i,]$female), complete_data_valid[complete_data_valid$uid == 1 & complete_data_valid$month == i,]$female)
+  
+  complete_data_valid[complete_data_valid$month == i,]$male <- replace(complete_data_valid[complete_data_valid$month == i,]$male, is.na(complete_data_valid[complete_data_valid$month == i,]$male), complete_data_valid[complete_data_valid$uid == 1 & complete_data_valid$month == i,]$male)
+}
+
+```
+
+```{r}
+complete_data_valid_season <- complete_data_valid %>%
+  group_by(uid, season) %>%
+  summarise(phq4_score = mean(phq4_score),
+            P1 = mean(P1),
+            P3 = mean(P3),
+            Z1 = mean(Z1),
+            sse_score = mean(sse_score),
+            asian = mean(asian),
+            black = mean(black),
+            white = mean(white),
+            male = mean(male),
+            female = mean(female),
+            normalized_phq4_score = mean(normalized_phq4_score))
+
+complete_data_valid_season <- complete_data_valid_season %>%
+  ungroup()
+complete_data_valid_season <- as.data.frame(complete_data_valid_season)
+```
+
+
+# prepare the data for synthetic control(for phq4)
+
+```{r}
+dataprep.out <- dataprep(
+  foo = complete_data_valid_season,
+  predictors = c("P1", "P3", "Z1", "phq4_score", "asian", "male", "female", "black", "white"),
+  predictors.op = "mean",
+  time.predictors.prior = 4:7,
+  dependent = "phq4_score",
+  unit.variable = "uid",
+  time.variable = "season",
+  treatment.identifier = 1,
+  controls.identifier = c(2:46),
+  time.optimize.ssr = 4:7,
+  time.plot = 3:13
+)
+```
+
+
+
+```{r}
+synth.out <- synth(dataprep.out)
+
+synth.tables <- synth.tab(dataprep.res = dataprep.out, synth.res = synth.out)
+```
+```{r}
+path.plot(dataprep.res = dataprep.out, synth.res = synth.out, 
+          Main = "Dartmouth Students' Mental Health Level Over Time")
+abline(v = 8, col = "red") 
+```
+
+# prepare the data for synthetic control(for sse)
+
+```{r}
+dataprep.out <- dataprep(
+  foo = complete_data_valid_season,
+  predictors = c("P1", "P3", "Z1", "sse_score", "asian", "male", "female", "black", "white"),
+  predictors.op = "mean",
+  time.predictors.prior = 4:7,
+  dependent = "sse_score",
+  unit.variable = "uid",
+  time.variable = "season",
+  treatment.identifier = 1,
+  controls.identifier = c(2:46),
+  time.optimize.ssr = 4:7,
+  time.plot = 3:13
+)
+```
+
+
+
+```{r}
+synth.out <- synth(dataprep.out)
+
+synth.tables <- synth.tab(dataprep.res = dataprep.out, synth.res = synth.out)
+synth.tables$tab.w 
+synth.tables$tab.pred  
+```
+
+```{r}
+path.plot(dataprep.res = dataprep.out, synth.res = synth.out, 
+          Main = "Dartmouth Students' self-esteem Level Over Time")
+abline(v = 8, col = "red") 
+```
+
+
+
+
+
